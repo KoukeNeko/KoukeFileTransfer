@@ -180,7 +180,7 @@ const FileTransfer = () => {
           <div className="p-6">
             <div className="flex gap-4 items-center">
               <h2 className="text-2xl font-bold mb-4">Your Peer ID: {peerId}</h2>
-              {!peerId && <span class="loading loading-dots loading-md"></span>}
+              {!peerId && <span className="loading loading-dots loading-md"></span>}
             </div>
             {senderPeerId && (
               <h3 className="text-xl font-bold mb-4">
