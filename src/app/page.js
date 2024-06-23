@@ -174,7 +174,7 @@ const FileTransfer = () => {
     <div className="h-screen flex items-center justify-center ">
       <div id="App" className="mockup-browser border w-11/12 h-5/6">
         <div className="mockup-browser-toolbar">
-          <div className="input">{"https://" + window.location.hostname}</div>
+          <div className="input">{typeof window !== "undefined" && window.location.href}</div>
         </div>
         <div className="flex justify-center px-4 py-16 bg-base-200 h-full">
           <div className="p-6">
