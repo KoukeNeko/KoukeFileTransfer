@@ -2,35 +2,36 @@
 import React, { useState, useEffect } from "react";
 import Peer from "peerjs";
 
-// Function to generate a numeric peer ID
+// Generate a 7-digit random number as peer ID
 const generateNumericPeerId = () => {
-  return Math.floor(Math.random() * 9000000) + 1000000; // Generates a 7-digit random number
+  return Math.floor(Math.random() * 9000000) + 1000000;
 };
 
-
 const FileTransfer = () => {
-  const [peer, setPeer] = useState(null);
-  const [peerId, setPeerId] = useState("");
-  const [targetPeerId, setTargetPeerId] = useState("");
-  const [connection, setConnection] = useState(null);
-  const [senderPeerId, setSenderPeerId] = useState(""); // State to store sender's peer ID
-  const [isSender, setIsSender] = useState(false); // State to track if the peer is the sender
-  const [receivedFile, setReceivedFile] = useState(null);
-  const [downloadUrl, setDownloadUrl] = useState("");
-  const [fileName, setFilename] = useState("");
-  const [transferProgress, setTransferProgress] = useState(0); // State to track file transfer progress
-  const [modalState, setModalState] = useState({
+  // State variables definition
+  const [peer, setPeer] = useState(null);                  // PeerJS instance
+  const [peerId, setPeerId] = useState("");                // Current peer's ID
+  const [targetPeerId, setTargetPeerId] = useState("");    // Target peer's ID
+  const [connection, setConnection] = useState(null);      // Connection with other peer
+  const [senderPeerId, setSenderPeerId] = useState("");    // Sender's peer ID
+  const [isSender, setIsSender] = useState(false);         // Whether this peer is the sender
+  const [receivedFile, setReceivedFile] = useState(null);  // Received file name
+  const [downloadUrl, setDownloadUrl] = useState("");      // URL for downloading the file
+  const [fileName, setFilename] = useState("");            // Current file name being processed
+  const [transferProgress, setTransferProgress] = useState(0); // Transfer progress
+  const [modalState, setModalState] = useState({           // Modal state
     isModalOpen: false,
     title: "",
     message: "",
   });
 
-  // Function to show the modal with a title and message
+  // Function to show the modal
   const showModal = (title, message) => {
     setModalState({ isModalOpen: true, title, message });
   };
 
   useEffect(() => {
+    // Generate new peer ID and initialize PeerJS
     const newPeerId = generateNumericPeerId();
     const newPeer = new Peer(newPeerId.toString(), {
       host: "0.peerjs.com",
@@ -45,69 +46,77 @@ const FileTransfer = () => {
       },
     });
 
+    // Set peer ID when peer connection is successful
     newPeer.on("open", (id) => {
       console.log("Peer ID:", id);
-      setPeerId(id); // Set the peer ID state
+      setPeerId(id);
     });
 
+    // Handle received connections
     newPeer.on("connection", (conn) => {
       console.log("Connection received from:", conn.peer);
-      setSenderPeerId(conn.peer); // Set the sender's peer ID state
-      setIsSender(false); // Set as receiver
+      setSenderPeerId(conn.peer);
+      setIsSender(false);
 
       let receivedChunks = [];
       let totalSize = 0;
 
+      // Handle received data
       conn.on("data", (data) => {
         console.log("Data received:", data);
         if (data.type === "file-start") {
-          // Notify the receiver about the incoming file transfer
-          // showModal("Incoming File", `File name: ${data.fileName}`);
+          // Start receiving new file
           setFilename(data.fileName);
           totalSize = data.size;
           receivedChunks = [];
         } else if (data.chunk) {
+          // Receive file chunk
           receivedChunks.push(data.chunk);
-          // Update transfer progress
           const receivedSize = receivedChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
           const progress = Math.round((receivedSize / totalSize) * 100);
           setTransferProgress(progress);
           if (progress >= 100) {
+            // File reception complete, create Blob and generate download URL
             const fileBlob = new Blob(receivedChunks);
             const url = URL.createObjectURL(fileBlob);
             setReceivedFile(data.fileName);
             setDownloadUrl(url);
-            // showModal("File Received", `File name: ${data.fileName}`);
             console.log(`File received: ${data.fileName}, URL: ${url}`);
           }
         } else if (data.type === "progress") {
-          setTransferProgress(Math.min(data.progress, 100)); // Ensure progress does not exceed 100%
+          // Update transfer progress
+          setTransferProgress(Math.min(data.progress, 100));
         }
       });
 
-      setConnection(conn); // Set the connection state
+      setConnection(conn);
     });
 
+    // Handle disconnection
     newPeer.on("disconnected", () => {
       console.warn("Connection lost. Attempting to reconnect...");
       newPeer.reconnect();
     });
 
+    // Handle connection closure
     newPeer.on("close", () => {
       console.warn("Connection destroyed.");
     });
 
+    // Handle errors
     newPeer.on("error", (err) => {
       console.error("PeerJS Error:", err);
     });
 
-    setPeer(newPeer); // Set the peer instance state
+    setPeer(newPeer);
 
+    // Clean up PeerJS instance when component unmounts
     return () => {
       newPeer.destroy();
     };
   }, []);
 
+  // Connect to target peer
   const connectToPeer = () => {
     if (!peer) {
       console.error("Peer instance not initialized.");
@@ -115,13 +124,13 @@ const FileTransfer = () => {
     }
 
     console.log("Connecting to peer:", targetPeerId);
-    const conn = peer.connect(targetPeerId); // Connect to the target peer ID
+    const conn = peer.connect(targetPeerId);
 
     conn.on("open", () => {
       console.log("Connection opened");
-      setConnection(conn); // Set the connection state
-      setSenderPeerId(targetPeerId); // Set the target peer ID as the sender's ID
-      setIsSender(true); // Set as sender
+      setConnection(conn);
+      setSenderPeerId(targetPeerId);
+      setIsSender(true);
     });
 
     conn.on("error", (err) => {
@@ -129,47 +138,59 @@ const FileTransfer = () => {
     });
   };
 
+  // Send file
   const sendFile = (file) => {
     if (!connection) {
       showModal("Error", "No connection established.");
       return;
     }
 
-    // Notify the receiver that the file transfer is starting
+    // Notify receiver about the start of file transfer
     connection.send({ type: "file-start", fileName: file.name, size: file.size });
-
-    // showModal("Starting File Transfer", `File name: ${file.name}`);
     setFilename(file.name);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const arrayBuffer = reader.result;
-      const chunkSize = 16 * 1024; // 16KB chunks
-      let offset = 0;
+    const chunkSize = 64 * 1024; // 64KB chunk size
+    let offset = 0;
+    let reader = new FileReader();
 
-      function sendChunk() {
-        const chunk = arrayBuffer.slice(offset, offset + chunkSize);
-        connection.send({ type: "file-chunk", fileName: file.name, chunk });
-        offset += chunkSize;
+    // Read next file chunk
+    const readNextChunk = () => {
+      const slice = file.slice(offset, offset + chunkSize);
+      reader.readAsArrayBuffer(slice);
+    };
 
-        // Update transfer progress
-        const progress = Math.round((offset / arrayBuffer.byteLength) * 100);
+    // Handle file chunk load completion event
+    reader.onload = (event) => {
+      if (event.target.result) {
+        // Send file chunk
+        connection.send({ type: "file-chunk", fileName: file.name, chunk: event.target.result });
+        offset += event.target.result.byteLength;
+        const progress = Math.round((offset / file.size) * 100);
         setTransferProgress(progress);
         connection.send({ type: "progress", progress });
 
-        if (offset < arrayBuffer.byteLength) {
-          setTimeout(sendChunk, 0);
+        if (offset < file.size) {
+          // If there's remaining part, continue reading next chunk
+          readNextChunk();
         } else {
+          // File transfer complete
           console.log("File transfer completed.");
-          setTransferProgress(100); // Ensure progress is set to 100% on completion
+          setTransferProgress(100);
         }
       }
-
-      sendChunk();
     };
-    reader.readAsArrayBuffer(file); // Read the file as an array buffer
+
+    // Handle file read error
+    reader.onerror = (error) => {
+      console.error("Error reading file:", error);
+      showModal("Error", "Failed to read file.");
+    };
+
+    // Start reading the file
+    readNextChunk();
   };
 
+  // Render UI
   return (
     <div className="h-screen flex items-center justify-center ">
       <div id="App" className="mockup-browser border w-11/12 h-5/6">
@@ -178,35 +199,41 @@ const FileTransfer = () => {
         </div>
         <div className="flex justify-center px-4 py-16 bg-base-200 h-full">
           <div className="p-6">
+            {/* Display current peer ID */}
             <div className="flex gap-4 items-center">
               <h2 className="text-2xl font-bold mb-4">Your Peer ID: {peerId}</h2>
               {!peerId && <span className="loading loading-dots loading-md"></span>}
             </div>
+            {/* Display connection status */}
             {senderPeerId && (
               <h3 className="text-xl font-bold mb-4">
                 {isSender ? "Connected to" : "Connected from"}: {senderPeerId}
               </h3>
             )}
             <div className="mb-4">
+              {/* Input for target peer ID */}
               <input
                 type="number"
                 placeholder="Enter peer ID"
                 value={targetPeerId}
-                onChange={(e) => setTargetPeerId(e.target.value)} // Update target peer ID state on input change
+                onChange={(e) => setTargetPeerId(e.target.value)}
                 className="input input-bordered w-full mb-2"
               />
+              {/* Connect button */}
               <button
                 onClick={connectToPeer}
                 className="btn btn-primary w-full mb-2"
               >
                 Connect
               </button>
+              {/* File selection input */}
               <input
                 type="file"
                 onChange={(e) => e.target.files && sendFile(e.target.files[0])}
                 className="file-input file-input-bordered w-full"
               />
             </div>
+            {/* Display transfer progress */}
             {transferProgress > 0 && (
               <div className="flex flex-col gap-2">
                 <h3 className="text-xl font-bold">
@@ -215,6 +242,7 @@ const FileTransfer = () => {
                 <progress className="progress" value={transferProgress} max="100"></progress>
               </div>
             )}
+            {/* Display download option for received file */}
             {receivedFile && (
               <div className="mt-4">
                 <h3 className="text-xl font-bold">File received: {receivedFile}</h3>
@@ -228,6 +256,7 @@ const FileTransfer = () => {
               </div>
             )}
 
+            {/* Modal */}
             {modalState.isModalOpen && (
               <div
                 className="modal modal-open"
